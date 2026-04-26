@@ -1,0 +1,35 @@
+name: Job Agent
+
+on:
+  schedule:
+    - cron: "0 20 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python agent.py
+      - name: Commit results
+        run: |
+          git config user.name "Job Agent"
+          git config user.email "action@github.com"
+          git add data/history.json report/index.html
+          git diff --staged --quiet || git commit -m "Update report"
+          git push
