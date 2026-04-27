@@ -2,7 +2,7 @@ name: Job Agent
 
 on:
   schedule:
-    - cron: "0 20 * * 1-5"
+    - cron: '0 20 * * 1-5'  # 20h UTC = 21h Lisboa (WEST)
   workflow_dispatch:
 
 permissions:
@@ -13,23 +13,55 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Run agent
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python agent.py
-      - name: Commit results
+
+      - name: Save history and report
         run: |
           git config user.name "Job Agent"
           git config user.email "action@github.com"
           git add data/history.json report/index.html
-          git diff --staged --quiet || git commit -m "Update report"
+          git diff --staged --quiet || git commit -m "Update report $(date +'%Y-%m-%d')"
           git push
+
+  deploy:
+    needs: run
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: report/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
