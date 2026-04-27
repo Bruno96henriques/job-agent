@@ -2,3 +2,4 @@ groq
 requests
 beautifulsoup4
 sendgrid
+playwright
