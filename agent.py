@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import re
 import time
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
-import anthropic
+from groq import Groq
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
@@ -20,11 +20,11 @@ HEADERS = {
 }
 
 BRUNO_PROFILE = """
-Consultor Sénior com 5 anos de experiência em consultoria de gestão, principalmente setor público e institucional.
-Experiências principais: gestão de projetos, candidaturas a fundos europeus, reengenharia de processos,
-elaboração de propostas comerciais, coordenação de equipas de analistas, documentação técnica.
-Procura vagas em: consultoria de estratégia, consultoria de negócio, gestão de projetos, business analyst sénior.
-Localização: Lisboa. Não tem interesse em vagas 100% técnicas de IT, engenharia de software ou programação.
+Consultor Senior com 5 anos de experiencia em consultoria de gestao, principalmente setor publico e institucional.
+Experiencias principais: gestao de projetos, candidaturas a fundos europeus, reengenharia de processos,
+elaboracao de propostas comerciais, coordenacao de equipas de analistas, documentacao tecnica.
+Procura vagas em: consultoria de estrategia, consultoria de negocio, gestao de projetos, business analyst senior.
+Localizacao: Lisboa. Nao tem interesse em vagas 100% tecnicas de IT, engenharia de software ou programacao.
 """
 
 KEYWORDS = [
@@ -160,7 +160,7 @@ def filter_new(jobs, history):
 
 
 def analyze_with_claude(jobs):
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = Groq(api_key=os.environ["GROQ_API_KEY"])
     analyzed = []
     for job in jobs:
         prompt = f"""Analisa esta vaga para o seguinte candidato:
@@ -169,37 +169,37 @@ PERFIL:
 {BRUNO_PROFILE}
 
 VAGA:
-Título: {job['title']}
+Titulo: {job['title']}
 Empresa: {job['company']}
-Descrição: {job['description'] or 'Não disponível'}
+Descricao: {job['description'] or 'Nao disponivel'}
 
 Classifica:
 3 = Muito relevante
 2 = Relevante
 1 = Para considerar
-0 = Ignorar (IT técnico, engenharia, não em Lisboa, etc.)
+0 = Ignorar (IT tecnico, engenharia, nao em Lisboa, etc.)
 
-Responde APENAS com JSON válido:
+Responde APENAS com JSON valido:
 {{"score": <0-3>, "reason": "<uma linha>"}}"""
 
         try:
-            response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
                 max_tokens=150,
                 messages=[{"role": "user", "content": prompt}]
             )
-            text = response.content[0].text.strip()
+            text = response.choices[0].message.content.strip()
             result = json.loads(text)
             job["score"] = int(result.get("score", 1))
             job["reason"] = result.get("reason", "")
         except Exception as e:
-            print(f"Claude error '{job['title']}': {e}")
+            print(f"Groq error '{job['title']}': {e}")
             job["score"] = 1
             job["reason"] = ""
 
         if job["score"] > 0:
             analyzed.append(job)
-        time.sleep(0.5)
+        time.sleep(0.3)
 
     return analyzed
 
@@ -266,7 +266,7 @@ def generate_html_report(jobs, date_str):
 </head>
 <body>
 <div class="wrap">
-  <h1 style="color:#111;margin-bottom:4px;">Relatório de Vagas</h1>
+  <h1 style="color:#111;margin-bottom:4px;">Relatorio de Vagas</h1>
   <p style="color:#888;margin-top:0;">{date_str}</p>
   <div style="background:white;padding:20px;border-radius:8px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.1);display:flex;gap:24px;align-items:center;">
     <span style="font-size:28px;font-weight:700;">{len(jobs)} vagas novas</span>
@@ -308,7 +308,7 @@ RELEVANTES ({len(relevant)})
 {lines(relevant)}
 PARA CONSIDERAR ({len(consider)})
 {lines(consider)}
-Ver relatório completo: {report_url}
+Ver relatorio completo: {report_url}
 
 Job Agent"""
 
@@ -345,7 +345,7 @@ def main():
     new_jobs = filter_new(all_jobs, history)
     print(f"New jobs: {len(new_jobs)}")
 
-    report_url = "https://Bruno96henrques.github.io/job-agent/"
+    report_url = "https://bruno96henriques.github.io/job-agent/"
 
     if new_jobs:
         analyzed = analyze_with_claude(new_jobs)
