@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from groq import Groq
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from playwright.sync_api import sync_playwright
 
 HISTORY_FILE = Path("data/history.json")
 REPORT_FILE = Path("report/index.html")
@@ -84,25 +85,44 @@ def scrape_indeed(keyword):
 
 def scrape_linkedin(keyword):
     jobs = []
-    url = f"https://www.linkedin.com/jobs/search/?keywords={requests.utils.quote(keyword)}&location=Lisboa&sortBy=DD"
+    url = f"https://www.linkedin.com/jobs/search/?keywords={requests.utils.quote(keyword)}&location=Lisboa%2C+Portugal&sortBy=DD&f_TPR=r86400"
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        cards = soup.find_all("div", class_=re.compile("base-card"))
-        for card in cards[:15]:
-            title_el = card.find("h3", class_=re.compile("base-search-card__title"))
-            company_el = card.find("h4", class_=re.compile("base-search-card__subtitle"))
-            link_el = card.find("a", href=True)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"]
+            )
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+                locale="pt-PT"
+            )
+            page = context.new_page()
+            page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(4000)
 
-            title = title_el.get_text(strip=True) if title_el else ""
-            company = company_el.get_text(strip=True) if company_el else ""
-            link = link_el["href"] if link_el else ""
+            cards = page.query_selector_all(".base-card")
+            print(f"LinkedIn '{keyword}': found {len(cards)} cards")
 
-            if title and company and len(title) > 3:
-                jobs.append({
-                    "title": title, "company": company,
-                    "description": "", "link": link, "source": "LinkedIn"
-                })
+            for card in cards[:15]:
+                title_el = card.query_selector(".base-search-card__title")
+                company_el = card.query_selector(".base-search-card__subtitle")
+                link_el = card.query_selector("a.base-card__full-link")
+
+                title = title_el.inner_text().strip() if title_el else ""
+                company = company_el.inner_text().strip() if company_el else ""
+                link = link_el.get_attribute("href") if link_el else ""
+                if link:
+                    link = link.split("?")[0]
+
+                if title and company and len(title) > 3:
+                    jobs.append({
+                        "title": title, "company": company,
+                        "description": "", "link": link, "source": "LinkedIn"
+                    })
+
+            browser.close()
     except Exception as e:
         print(f"LinkedIn error '{keyword}': {e}")
     return jobs
@@ -335,7 +355,7 @@ def main():
         all_jobs.extend(scrape_indeed(keyword))
         time.sleep(random.uniform(1, 2))
         all_jobs.extend(scrape_linkedin(keyword))
-        time.sleep(random.uniform(1, 2))
+        time.sleep(random.uniform(2, 3))
         all_jobs.extend(scrape_net_empregos(keyword))
         time.sleep(random.uniform(1, 2))
 
